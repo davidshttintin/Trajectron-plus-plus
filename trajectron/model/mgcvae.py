@@ -6,6 +6,7 @@ from model.components import *
 from model.model_utils import *
 import model.dynamics as dynamic_module
 from environment.scene_graph import DirectedEdge
+import typing
 
 
 class MultimodalGenerativeCVAE(object):
@@ -39,6 +40,7 @@ class MultimodalGenerativeCVAE(object):
                 np.sum([len(entity_dims) for entity_dims in self.state[env.robot_type].values()])
             )
         self.pred_state_length = int(np.sum([len(entity_dims) for entity_dims in self.pred_state.values()]))
+        # print("pred state length", self.pred_state_length)
 
         edge_types_str = [DirectedEdge.get_str_from_types(*edge_type) for edge_type in self.edge_types]
         self.create_graphical_model(edge_types_str)
@@ -366,12 +368,12 @@ class MultimodalGenerativeCVAE(object):
                                neighbors,
                                neighbors_edge_value,
                                robot,
-                               map) -> (torch.Tensor,
+                               map) -> typing.Tuple[torch.Tensor,
                                         torch.Tensor,
                                         torch.Tensor,
                                         torch.Tensor,
                                         torch.Tensor,
-                                        torch.Tensor):
+                                        torch.Tensor]:
         """
         Encodes input and output tensors for node and robot.
 
@@ -754,11 +756,10 @@ class MultimodalGenerativeCVAE(object):
 
         else:
             h = x
-
         to_latent = self.node_modules[self.node_type + '/hx_to_z']
         return self.latent.dist_from_h(to_latent(h), mode)
 
-    def project_to_GMM_params(self, tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
+    def project_to_GMM_params(self, tensor) -> typing.Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Projects tensor to parameters of a GMM with N components and D dimensions.
 
@@ -871,19 +872,27 @@ class MultimodalGenerativeCVAE(object):
                        torch.reshape(corrs, [num_samples, -1, ph, num_components]))
 
         if self.hyperparams['dynamic'][self.node_type]['distribution']:
+            # print("integrating")
             y_dist = self.dynamic.integrate_distribution(a_dist, x)
         else:
+            # print("not integrating")
             y_dist = a_dist
 
-        if mode == ModeKeys.PREDICT:
-            if gmm_mode:
-                a_sample = a_dist.mode()
-            else:
-                a_sample = a_dist.rsample()
-            sampled_future = self.dynamic.integrate_samples(a_sample, x)
-            return y_dist, sampled_future
+        # if mode == ModeKeys.PREDICT:
+        #     if gmm_mode:
+        #         a_sample = a_dist.mode()
+        #     else:
+        #         a_sample = a_dist.rsample()
+        #     sampled_future = self.dynamic.integrate_samples(a_sample, x)
+        #     return y_dist, sampled_future
+        # else:
+        #     return y_dist
+        if gmm_mode:
+            a_sample = a_dist.mode()
         else:
-            return y_dist
+            a_sample = a_dist.rsample()
+        sampled_future = self.dynamic.integrate_samples(a_sample, x)
+        return y_dist, sampled_future
 
     def encoder(self, mode, x, y_e, num_samples=None):
         """
@@ -1116,6 +1125,8 @@ class MultimodalGenerativeCVAE(object):
         """
         mode = ModeKeys.PREDICT
 
+        # print("running predict\n\n\n\n")
+
         x, x_nr_t, _, y_r, _, n_s_t0 = self.obtain_encoded_tensors(mode=mode,
                                                                    inputs=inputs,
                                                                    inputs_st=inputs_st,
@@ -1133,11 +1144,76 @@ class MultimodalGenerativeCVAE(object):
                                                               most_likely_z=z_mode,
                                                               full_dist=full_dist,
                                                               all_z_sep=all_z_sep)
+        #print("z", z.sum(axis=0))
+        #print("z shape", z.shape)
+        #print("num components", num_components)
 
-        _, our_sampled_future = self.p_y_xz(mode, x, x_nr_t, y_r, n_s_t0, z,
+        # print("latent dist", self.latent.p_dist.probs.shape)
+
+        y_dist, our_sampled_future = self.p_y_xz(mode, x, x_nr_t, y_r, n_s_t0, z,
                                             prediction_horizon,
                                             num_samples,
                                             num_components,
                                             gmm_mode)
 
+        # print("mus shape", y_dist.mus.shape)
+        # print("covs shape", y_dist.get_covariance_matrix().shape)
         return our_sampled_future
+
+    
+    def get_features(self,
+                inputs,
+                inputs_st,
+                first_history_indices,
+                neighbors,
+                neighbors_edge_value,
+                robot,
+                map,
+                prediction_horizon,
+                num_samples):
+        """
+        Predicts the future of a batch of nodes.
+
+        :param inputs: Input tensor including the state for each agent over time [bs, t, state].
+        :param inputs_st: Standardized input tensor.
+        :param first_history_indices: First timestep (index) in scene for which data is available for a node [bs]
+        :param neighbors: Preprocessed dict (indexed by edge type) of list of neighbor states over time.
+                            [[bs, t, neighbor state]]
+        :param neighbors_edge_value: Preprocessed edge values for all neighbor nodes [[N]]
+        :param robot: Standardized robot state over time. [bs, t, robot_state]
+        :param map: Tensor of Map information. [bs, channels, x, y]
+        :param prediction_horizon: Number of prediction timesteps.
+        :param num_samples: Number of samples from the latent space.
+        :param z_mode: If True: Select the most likely latent state.
+        :param gmm_mode: If True: The mode of the GMM is sampled.
+        :param all_z_sep: Samples each latent mode individually without merging them into a GMM.
+        :param full_dist: Samples all latent states and merges them into a GMM as output.
+        :return:
+        """
+        mode = ModeKeys.PREDICT
+
+        x, x_nr_t, _, y_r, _, n_s_t0 = self.obtain_encoded_tensors(mode=mode,
+                                                                   inputs=inputs,
+                                                                   inputs_st=inputs_st,
+                                                                   labels=None,
+                                                                   labels_st=None,
+                                                                   first_history_indices=first_history_indices,
+                                                                   neighbors=neighbors,
+                                                                   neighbors_edge_value=neighbors_edge_value,
+                                                                   robot=robot,
+                                                                   map=map)
+
+        self.latent.p_dist = self.p_z_x(mode, x)
+        z, num_samples, num_components = self.latent.sample_p(num_samples,
+                                                              mode,
+                                                              most_likely_z=False,
+                                                              full_dist=True,
+                                                              all_z_sep=False)
+
+        gmm_dist, _ = self.p_y_xz(mode, x, x_nr_t, y_r, n_s_t0, z,
+                                            prediction_horizon,
+                                            num_samples,
+                                            num_components,
+                                            gmm_mode=False)
+        
+        return gmm_dist, self.latent.p_dist.probs

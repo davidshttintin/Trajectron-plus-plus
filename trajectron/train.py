@@ -92,14 +92,20 @@ def main():
     log_writer = None
     model_dir = None
     if not args.debug:
-        # Create the log and model directiory if they're not present.
-        model_dir = os.path.join(args.log_dir,
-                                 'models_' + time.strftime('%d_%b_%Y_%H_%M_%S', time.localtime()) + args.log_tag)
-        pathlib.Path(model_dir).mkdir(parents=True, exist_ok=True)
 
-        # Save config to model directory
-        with open(os.path.join(model_dir, 'config.json'), 'w') as conf_json:
-            json.dump(hyperparams, conf_json)
+        if args.cont_from_ts < 1:
+            # Create the log and model directiory if they're not present.
+            model_dir = os.path.join(args.log_dir,
+                                    'models_' + time.strftime('%d_%b_%Y_%H_%M_%S', time.localtime()) + args.log_tag)
+            pathlib.Path(model_dir).mkdir(parents=True, exist_ok=True)
+
+            # Save config to model directory
+            with open(os.path.join(model_dir, 'config.json'), 'w') as conf_json:
+                json.dump(hyperparams, conf_json)
+        else:
+            # load an existing model
+            model_dir = os.path.dirname(args.conf)
+            # no need to dump hyperparam. the config is already there
 
         log_writer = SummaryWriter(log_dir=model_dir)
 
@@ -134,6 +140,8 @@ def main():
     for node_type_data_set in train_dataset:
         if len(node_type_data_set) == 0:
             continue
+        print(len(node_type_data_set))
+        print(len(node_type_data_set.env.scenes))
 
         node_type_dataloader = utils.data.DataLoader(node_type_data_set,
                                                      collate_fn=collate,
@@ -142,8 +150,19 @@ def main():
                                                      shuffle=True,
                                                      num_workers=args.preprocess_workers)
         train_data_loader[node_type_data_set.node_type] = node_type_dataloader
+    
+    # debug info
+    tt_num_nodes = 0
+    for a_scene in train_env.scenes:
+        if len(a_scene.nodes) > 100:
+            print(a_scene.name)
+            #print(a_scene.nodes)
+        tt_num_nodes += len(a_scene.nodes)
+    print(f'total number of nodes{tt_num_nodes}')
 
     print(f"Loaded training data from {train_data_path}")
+
+
 
     eval_scenes = []
     eval_scenes_sample_probs = None
@@ -205,6 +224,11 @@ def main():
 
     model_registrar = ModelRegistrar(model_dir, args.device)
 
+    # loading a previously saved checkpoint
+    if args.cont_from_ts >= 1:
+        model_registrar.load_models(args.cont_from_ts)
+        print(f'Loaded frozen model from ts={args.cont_from_ts}.')
+        
     trajectron = Trajectron(model_registrar,
                             hyperparams,
                             log_writer,
@@ -242,7 +266,12 @@ def main():
     #           TRAINING            #
     #################################
     curr_iter_node_type = {node_type: 0 for node_type in train_data_loader.keys()}
-    for epoch in range(1, args.train_epochs + 1):
+    if args.cont_from_ts < 1:
+        start_epoch = 1
+    else:
+        start_epoch = args.cont_from_ts + 1
+    
+    for epoch in range(start_epoch, args.train_epochs + start_epoch):
         model_registrar.to(args.device)
         train_dataset.augment = args.augment
         for node_type, data_loader in train_data_loader.items():
@@ -355,6 +384,10 @@ def main():
                 ax.set_title(f"{scene.name}-t: {timestep}")
                 log_writer.add_figure('eval/prediction_all_z', fig, epoch)
 
+        # save first, then evaluate
+        if args.save_every is not None and args.debug is False and epoch % args.save_every == 0:
+            model_registrar.save_models(epoch)
+
         #################################
         #           EVALUATION          #
         #################################
@@ -432,8 +465,6 @@ def main():
                                             'eval/ml',
                                             epoch)
 
-        if args.save_every is not None and args.debug is False and epoch % args.save_every == 0:
-            model_registrar.save_models(epoch)
 
 
 if __name__ == '__main__':

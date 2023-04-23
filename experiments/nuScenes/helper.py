@@ -168,6 +168,87 @@ def plot_vehicle_mm(ax, predictions, dt, max_hl=10, ph=6, map=None, x_min=0, y_m
                         markersize=2,
                         linewidth=1, alpha=0.7)
 
+def plot_vehicle_pseudo_set_by_id(ax, predictions, dt, desired_id="ego", max_hl=10, ph=6, map=None, x_min=0, y_min=0):
+    prediction_dict, histories_dict, futures_dict = prediction_output_to_trajectories(predictions,
+                                                                                      dt,
+                                                                                      max_hl,
+                                                                                      ph,
+                                                                                      map=map)
+    assert (len(prediction_dict.keys()) <= 1)
+    if len(prediction_dict.keys()) == 0:
+        return
+    ts_key = list(prediction_dict.keys())[0]
+
+    prediction_dict = prediction_dict[ts_key]
+    histories_dict = histories_dict[ts_key]
+    futures_dict = futures_dict[ts_key]
+
+    if map is not None:
+        ax.imshow(map.fdata, origin='lower', alpha=0.5)
+
+    edge_width = 2
+    circle_edge_width = 0.5
+    node_circle_size = 0.3
+    i = 0
+    node_list = sorted(histories_dict.keys(), key=lambda x: x.id)
+    for node in node_list:
+        if node.id != desired_id:
+            continue
+        predictions = prediction_dict[node] + np.array([x_min, y_min])
+        if node.type.name == 'VEHICLE':
+            # for t in range(predictions.shape[2]):
+            #     sns.kdeplot(predictions[0, :, t, 0], predictions[0, :, t, 1],
+            #                 ax=ax, shade=True, shade_lowest=False,
+            #                 color=line_colors[i % len(line_colors)], zorder=600, alpha=0.8)
+            last_t = predictions.shape[2] - 1
+            sns.kdeplot(predictions[0, :, last_t, 0], predictions[0, :, last_t, 1],
+                        ax=ax, shade=True, shade_lowest=False,
+                        color=line_colors[i % len(line_colors)], zorder=600, alpha=0.8)
+            i += 1
+        else:
+            # ax.plot(history[:, 0], history[:, 1], 'k--')
+
+            for t in range(predictions.shape[2]):
+                sns.kdeplot(predictions[0, :, t, 0], predictions[0, :, t, 1],
+                            ax=ax, shade=True, shade_lowest=False,
+                            color='b', zorder=600, alpha=0.8)
+
+def plot_vehicle_by_id(ax, predictions, dt, desired_id="ego", max_hl=10, ph=6, map=None, x_min=0, y_min=0):
+    prediction_dict, histories_dict, futures_dict = prediction_output_to_trajectories(predictions,
+                                                                                      dt,
+                                                                                      max_hl,
+                                                                                      ph,
+                                                                                      map=map)
+    assert (len(prediction_dict.keys()) <= 1)
+    if len(prediction_dict.keys()) == 0:
+        return
+    ts_key = list(prediction_dict.keys())[0]
+
+    prediction_dict = prediction_dict[ts_key]
+    histories_dict = histories_dict[ts_key]
+    futures_dict = futures_dict[ts_key]
+
+    if map is not None:
+        ax.imshow(map.fdata, origin='lower', alpha=0.5)
+
+    node_list = sorted(histories_dict.keys(), key=lambda x: x.id)
+    for node in node_list:
+        if node.id != desired_id:
+            continue
+        predictions = prediction_dict[node] + np.array([x_min, y_min])
+        if node.type.name == 'VEHICLE':
+            for sample_num in range(prediction_dict[node].shape[1]):
+                ax.plot(predictions[:, sample_num, :, 0], predictions[:, sample_num, :, 1], 'ko-',
+                        zorder=620,
+                        markersize=5,
+                        linewidth=3, alpha=0.7)
+        else:
+            for sample_num in range(prediction_dict[node].shape[1]):
+                ax.plot(predictions[:, sample_num, :, 0], predictions[:, sample_num, :, 1], 'ko-',
+                        zorder=620,
+                        markersize=2,
+                        linewidth=1, alpha=0.7)
+
 
 def plot_vehicle_nice_mv(ax, predictions, dt, max_hl=10, ph=6, map=None, x_min=0, y_min=0):
     prediction_dict, histories_dict, futures_dict = prediction_output_to_trajectories(predictions,

@@ -251,6 +251,10 @@ def process_scene(ns_scene, env, nusc, data_path):
 
     scene = Scene(timesteps=max_timesteps + 1, dt=dt, name=str(scene_id), aug_func=augment)
 
+    # add map limit in Scene
+    scene.xlim = (x_min, x_max)
+    scene.ylim = (y_min, y_max)
+
     # Generate Maps
     map_name = nusc.get('log', ns_scene['log_token'])['location']
     nusc_map = NuScenesMap(dataroot=data_path, map_name=map_name)
@@ -403,7 +407,7 @@ def process_data(data_path, version, output_path, val_split):
     splits = create_splits_scenes()
     train_scenes, val_scenes = train_test_split(splits['train' if 'mini' not in version else 'mini_train'], test_size=val_split)
     train_scene_names = splits['train' if 'mini' not in version else 'mini_train']
-    val_scene_names = []#val_scenes
+    val_scene_names = val_scenes
     test_scene_names = splits['val' if 'mini' not in version else 'mini_val']
 
     ns_scene_names = dict()

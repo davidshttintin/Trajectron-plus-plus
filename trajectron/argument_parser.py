@@ -169,4 +169,10 @@ parser.add_argument('--save_every',
                     help='how often to save during training, never if None',
                     type=int,
                     default=1)
+
+parser.add_argument('--cont_from_ts',
+                    help='which model ts do we continue training from (anything <1 means fresh model)',
+                    type=int,
+                    default=-1)
+
 args = parser.parse_args()

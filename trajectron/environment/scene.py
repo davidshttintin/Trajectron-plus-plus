@@ -23,6 +23,8 @@ class Scene(object):
 
         self.aug_func = aug_func
         self.non_aug_scene = non_aug_scene
+        self.xlim = (None, None)
+        self.ylim = (None, None)
 
     def add_robot_from_nodes(self, robot_type):
         scenes = [self]
